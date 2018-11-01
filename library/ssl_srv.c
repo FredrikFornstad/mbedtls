@@ -1321,7 +1321,7 @@ read_record_header:
     if( ssl->renego_status != MBEDTLS_SSL_INITIAL_HANDSHAKE )
     {
         /* Set by mbedtls_ssl_read_record() */
-        msg_len = ssl->in.hslen;
+        msg_len = ssl->in_hslen;
     }
     else
 #endif
@@ -3749,7 +3749,7 @@ static int ssl_parse_client_key_exchange( mbedtls_ssl_context *ssl )
     }
 
     p = ssl->in.msg + mbedtls_ssl_hs_hdr_len( ssl );
-    end = ssl->in.msg + ssl->in.hslen;
+    end = ssl->in.msg + ssl->in_hslen;
 
     if( ssl->in.msgtype != MBEDTLS_SSL_MSG_HANDSHAKE )
     {
@@ -4099,7 +4099,7 @@ static int ssl_parse_certificate_verify( mbedtls_ssl_context *ssl )
 #if defined(MBEDTLS_SSL_PROTO_TLS1_2)
     if( ssl->minor_ver == MBEDTLS_SSL_MINOR_VERSION_3 )
     {
-        if( i + 2 > ssl->in.hslen )
+        if( i + 2 > ssl->in_hslen )
         {
             MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad certificate verify message" ) );
             return( MBEDTLS_ERR_SSL_BAD_HS_CERTIFICATE_VERIFY );
@@ -4156,7 +4156,7 @@ static int ssl_parse_certificate_verify( mbedtls_ssl_context *ssl )
         return( MBEDTLS_ERR_SSL_INTERNAL_ERROR );
     }
 
-    if( i + 2 > ssl->in.hslen )
+    if( i + 2 > ssl->in_hslen )
     {
         MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad certificate verify message" ) );
         return( MBEDTLS_ERR_SSL_BAD_HS_CERTIFICATE_VERIFY );
@@ -4165,7 +4165,7 @@ static int ssl_parse_certificate_verify( mbedtls_ssl_context *ssl )
     sig_len = ( ssl->in.msg[i] << 8 ) | ssl->in.msg[i+1];
     i += 2;
 
-    if( i + sig_len != ssl->in.hslen )
+    if( i + sig_len != ssl->in_hslen )
     {
         MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad certificate verify message" ) );
         return( MBEDTLS_ERR_SSL_BAD_HS_CERTIFICATE_VERIFY );

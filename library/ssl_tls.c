@@ -3527,7 +3527,7 @@ int mbedtls_ssl_write_record( mbedtls_ssl_context *ssl, uint8_t force_flush )
 
 static int ssl_hs_is_proper_fragment( mbedtls_ssl_context *ssl )
 {
-    if( ssl->in.msglen < ssl->in.hslen ||
+    if( ssl->in.msglen < ssl->in_hslen ||
         memcmp( ssl->in.msg + 6, "\0\0\0",        3 ) != 0 ||
         memcmp( ssl->in.msg + 9, ssl->in.msg + 1, 3 ) != 0 )
     {
@@ -3664,11 +3664,11 @@ int mbedtls_ssl_prepare_handshake_record( mbedtls_ssl_context *ssl )
         return( MBEDTLS_ERR_SSL_INVALID_RECORD );
     }
 
-    ssl->in.hslen = mbedtls_ssl_hs_hdr_len( ssl ) + ssl_get_hs_total_len( ssl );
+    ssl->in_hslen = mbedtls_ssl_hs_hdr_len( ssl ) + ssl_get_hs_total_len( ssl );
 
     MBEDTLS_SSL_DEBUG_MSG( 3, ( "handshake message: msglen ="
                         " %d, type = %d, hslen = %d",
-                        ssl->in.msglen, ssl->in.msg[0], ssl->in.hslen ) );
+                        ssl->in.msglen, ssl->in.msg[0], ssl->in_hslen ) );
 
 #if defined(MBEDTLS_SSL_PROTO_DTLS)
     if( ssl->conf->transport == MBEDTLS_SSL_TRANSPORT_DATAGRAM )
@@ -3738,7 +3738,7 @@ int mbedtls_ssl_prepare_handshake_record( mbedtls_ssl_context *ssl )
     else
 #endif /* MBEDTLS_SSL_PROTO_DTLS */
     /* With TLS we don't handle fragmentation (for now) */
-    if( ssl->in.msglen < ssl->in.hslen )
+    if( ssl->in.msglen < ssl->in_hslen )
     {
         MBEDTLS_SSL_DEBUG_MSG( 1, ( "TLS handshake fragmentation not supported (msglen %d, in_hslen %d)", ssl->in.msglen, 
 ssl->in_hslen) );
@@ -3754,7 +3754,7 @@ void mbedtls_ssl_update_handshake_status( mbedtls_ssl_context *ssl )
 
     if( ssl->state != MBEDTLS_SSL_HANDSHAKE_OVER && hs != NULL )
     {
-        ssl->handshake->update_checksum( ssl, ssl->in.msg, ssl->in.hslen );
+        ssl->handshake->update_checksum( ssl, ssl->in.msg, ssl->in_hslen );
     }
 
     /* Handshake message is complete, increment counter */
@@ -4088,7 +4088,7 @@ static int ssl_handle_possible_reconnect( mbedtls_ssl_context *ssl )
  */
 static int ssl_parse_record_header( mbedtls_ssl_context *ssl )
 {
-    int major_ver, minor_ver;
+    int major_ver, minor_ver, ret;
 
     MBEDTLS_SSL_DEBUG_BUF( 4, "input record header", ssl->in.hdr, mbedtls_ssl_hdr_len( ssl ) );
 
@@ -4515,9 +4515,9 @@ static int ssl_load_buffered_message( mbedtls_ssl_context *ssl )
                                hs_buf->data, msg_len + 12 );
 
         ssl->in.msgtype = MBEDTLS_SSL_MSG_HANDSHAKE;
-        ssl->in.hslen   = msg_len + 12;
+        ssl->in_hslen   = msg_len + 12;
         ssl->in.msglen  = msg_len + 12;
-        memcpy( ssl->in.msg, hs_buf->data, ssl->in.hslen );
+        memcpy( ssl->in.msg, hs_buf->data, ssl->in_hslen );
 
         ret = 0;
         goto exit;
@@ -4601,7 +4601,7 @@ static int ssl_buffer_message( mbedtls_ssl_context *ssl )
             unsigned recv_msg_seq_offset;
             unsigned recv_msg_seq = ( ssl->in.msg[4] << 8 ) | ssl->in.msg[5];
             mbedtls_ssl_hs_buffer *hs_buf;
-            size_t msg_len = ssl->in.hslen - 12;
+            size_t msg_len = ssl->in_hslen - 12;
 
             /* We should never receive an old handshake
              * message - double-check nonetheless. */
@@ -4796,7 +4796,7 @@ static int ssl_consume_current_message( mbedtls_ssl_context *ssl )
      */
 
     /* Case (1): Handshake messages */
-    if( ssl->in.hslen != 0 )
+    if( ssl->in_hslen != 0 )
     {
         /* Hard assertion to be sure that no application data
          * is in flight, as corrupting ssl->in.msglen during
@@ -4812,26 +4812,26 @@ static int ssl_consume_current_message( mbedtls_ssl_context *ssl )
          */
 
         /* Notes:
-         * (1) in.hslen is not necessarily the size of the
+         * (1) in_hslen is not necessarily the size of the
          *     current handshake content: If DTLS handshake
          *     fragmentation is used, that's the fragment
          *     size instead. Using the total handshake message
          *     size here is faulty and should be changed at
          *     some point.
          * (2) While it doesn't seem to cause problems, one
-         *     has to be very careful not to assume that in.hslen
+         *     has to be very careful not to assume that in_hslen
          *     is always <= in.msglen in a sensible communication.
          *     Again, it's wrong for DTLS handshake fragmentation.
          *     The following check is therefore mandatory, and
          *     should not be treated as a silently corrected assertion.
-         *     Additionally, ssl->in.hslen might be arbitrarily out of
+         *     Additionally, ssl->in_hslen might be arbitrarily out of
          *     bounds after handling a DTLS message with an unexpected
          *     sequence number, see mbedtls_ssl_prepare_handshake_record.
          */
-        if( ssl->in.hslen < ssl->in.msglen )
+        if( ssl->in_hslen < ssl->in.msglen )
         {
-            ssl->in.msglen -= ssl->in.hslen;
-            memmove( ssl->in.msg, ssl->in.msg + ssl->in.hslen,
+            ssl->in.msglen -= ssl->in_hslen;
+            memmove( ssl->in.msg, ssl->in.msg + ssl->in_hslen,
                      ssl->in.msglen );
 
             MBEDTLS_SSL_DEBUG_BUF( 4, "remaining content in record",
@@ -4842,7 +4842,7 @@ static int ssl_consume_current_message( mbedtls_ssl_context *ssl )
             ssl->in.msglen = 0;
         }
 
-        ssl->in.hslen   = 0;
+        ssl->in_hslen   = 0;
     }
     /* Case (4): Application data */
     else if( ssl->in.offt != NULL )
@@ -5570,7 +5570,7 @@ int mbedtls_ssl_parse_certificate( mbedtls_ssl_context *ssl )
     if( ssl->conf->endpoint  == MBEDTLS_SSL_IS_SERVER &&
         ssl->minor_ver != MBEDTLS_SSL_MINOR_VERSION_0 )
     {
-        if( ssl->in.hslen   == 3 + mbedtls_ssl_hs_hdr_len( ssl ) &&
+        if( ssl->in_hslen   == 3 + mbedtls_ssl_hs_hdr_len( ssl ) &&
             ssl->in.msgtype == MBEDTLS_SSL_MSG_HANDSHAKE    &&
             ssl->in.msg[0]  == MBEDTLS_SSL_HS_CERTIFICATE   &&
             memcmp( ssl->in.msg + mbedtls_ssl_hs_hdr_len( ssl ), "\0\0\0", 3 ) == 0 )
@@ -5600,7 +5600,7 @@ int mbedtls_ssl_parse_certificate( mbedtls_ssl_context *ssl )
     }
 
     if( ssl->in.msg[0] != MBEDTLS_SSL_HS_CERTIFICATE ||
-        ssl->in.hslen < mbedtls_ssl_hs_hdr_len( ssl ) + 3 + 3 )
+        ssl->in_hslen < mbedtls_ssl_hs_hdr_len( ssl ) + 3 + 3 )
     {
         MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad certificate message" ) );
         mbedtls_ssl_send_alert_message( ssl, MBEDTLS_SSL_ALERT_LEVEL_FATAL,
@@ -5616,7 +5616,7 @@ int mbedtls_ssl_parse_certificate( mbedtls_ssl_context *ssl )
     n = ( ssl->in.msg[i+1] << 8 ) | ssl->in.msg[i+2];
 
     if( ssl->in.msg[i] != 0 ||
-        ssl->in.hslen != n + 3 + mbedtls_ssl_hs_hdr_len( ssl ) )
+        ssl->in_hslen != n + 3 + mbedtls_ssl_hs_hdr_len( ssl ) )
     {
         MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad certificate message" ) );
         mbedtls_ssl_send_alert_message( ssl, MBEDTLS_SSL_ALERT_LEVEL_FATAL,
@@ -5645,9 +5645,9 @@ int mbedtls_ssl_parse_certificate( mbedtls_ssl_context *ssl )
 
     i += 3;
 
-    while( i < ssl->in.hslen )
+    while( i < ssl->in_hslen )
     {
-        if ( i + 3 > ssl->in.hslen ) {
+        if ( i + 3 > ssl->in_hslen ) {
             MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad certificate message" ) );
             mbedtls_ssl_send_alert_message( ssl, MBEDTLS_SSL_ALERT_LEVEL_FATAL,
                                            MBEDTLS_SSL_ALERT_MSG_DECODE_ERROR );
@@ -5665,7 +5665,7 @@ int mbedtls_ssl_parse_certificate( mbedtls_ssl_context *ssl )
             | (unsigned int) ssl->in.msg[i + 2];
         i += 3;
 
-        if( n < 128 || i + n > ssl->in.hslen )
+        if( n < 128 || i + n > ssl->in_hslen )
         {
             MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad certificate message" ) );
             mbedtls_ssl_send_alert_message( ssl, MBEDTLS_SSL_ALERT_LEVEL_FATAL,
@@ -6550,7 +6550,7 @@ int mbedtls_ssl_parse_finished( mbedtls_ssl_context *ssl )
         hash_len = 12;
 
     if( ssl->in.msg[0] != MBEDTLS_SSL_HS_FINISHED ||
-        ssl->in.hslen  != mbedtls_ssl_hs_hdr_len( ssl ) + hash_len )
+        ssl->in_hslen  != mbedtls_ssl_hs_hdr_len( ssl ) + hash_len )
     {
         MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad finished message" ) );
         mbedtls_ssl_send_alert_message( ssl, MBEDTLS_SSL_ALERT_LEVEL_FATAL,
@@ -7071,7 +7071,7 @@ static int ssl_session_reset_int( mbedtls_ssl_context *ssl, int partial )
     ssl_dtls_replay_reset( ssl );
 #endif
 
-    ssl->in.hslen = 0;
+    ssl->in_hslen = 0;
     ssl->nb_zero = 0;
 
     ssl->keep_current_message = 0;
@@ -7446,7 +7446,7 @@ int mbedtls_ssl_conf_psk( mbedtls_ssl_config *conf,
      * for client and ssl_parse_client_psk_identity() for
      * server. */
     if( ( psk_identity_len >> 16 ) != 0 ||
-        psk_identity_len > ssl->out.max_content_len )
+        psk_identity_len > MBEDTLS_SSL_OUT_CONTENT_LEN )
     {
         return( MBEDTLS_ERR_SSL_BAD_INPUT_DATA );
     }
@@ -7901,7 +7901,7 @@ int mbedtls_ssl_check_pending( const mbedtls_ssl_context *ssl )
      * Case C: A handshake message is being processed.
      */
 
-    if( ssl->in.hslen > 0 && ssl->in.hslen < ssl->in.msglen )
+    if( ssl->in_hslen > 0 && ssl->in_hslen < ssl->in.msglen )
     {
         MBEDTLS_SSL_DEBUG_MSG( 3, ( "ssl_check_pending: more handshake messages within current record" ) );
         return( 1 );
@@ -8468,7 +8468,7 @@ int mbedtls_ssl_read( mbedtls_ssl_context *ssl, unsigned char *buf, size_t len )
 #if defined(MBEDTLS_SSL_CLI_C)
             if( ssl->conf->endpoint == MBEDTLS_SSL_IS_CLIENT &&
                 ( ssl->in.msg[0] != MBEDTLS_SSL_HS_HELLO_REQUEST ||
-                  ssl->in.hslen  != mbedtls_ssl_hs_hdr_len( ssl ) ) )
+                  ssl->in_hslen  != mbedtls_ssl_hs_hdr_len( ssl ) ) )
             {
                 MBEDTLS_SSL_DEBUG_MSG( 1, ( "handshake received (not HelloRequest)" ) );
 

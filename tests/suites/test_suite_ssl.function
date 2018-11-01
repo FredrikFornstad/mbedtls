@@ -27,12 +27,12 @@ void ssl_dtls_replay( data_t * prevs, data_t * new, int ret )
     /* Read previous record numbers */
     for( len = 0; len < prevs->len; len += 6 )
     {
-        memcpy( ssl.in_ctr + 2, prevs->x + len, 6 );
+        memcpy( ssl.in.ctr + 2, prevs->x + len, 6 );
         mbedtls_ssl_dtls_replay_update( &ssl );
     }
 
     /* Check new number */
-    memcpy( ssl.in_ctr + 2, new->x, 6 );
+    memcpy( ssl.in.ctr + 2, new->x, 6 );
     TEST_ASSERT( mbedtls_ssl_dtls_replay_check( &ssl ) == ret );
 
     mbedtls_ssl_free( &ssl );
